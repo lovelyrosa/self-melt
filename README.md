@@ -69,6 +69,18 @@ True second-level free domains (`.tk` etc.) are unreliable — prefer GitHub Pag
 | `meltTick()` + `warpDir()` | Neighbor copy / melt field |
 | `draw()` | Canvas2D `fillText` |
 
+## macOS screensaver
+
+Offline single-file build: [`screensaver.html`](./screensaver.html)
+
+Full setup (WebViewScreenSaver + online/offline URL): see **[SCREENSAVER.md](./SCREENSAVER.md)**
+
+```bash
+python3 scripts/build-screensaver.py
+# then point WebViewScreenSaver at screensaver.html or the GitHub Pages URL with ?screensaver=1
+```
+
 ## License
 
 MIT — do what you want; inspired by Andreas Gysin’s *Meltdown*, not a fork of on-chain code.
+

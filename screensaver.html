@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Self-Melt Screensaver</title>
+<style>
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0a0a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  cursor: grab;
+  touch-action: none;
+}
+
+canvas:active {
+  cursor: grabbing;
+}
+
+#hud {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  width: min(280px, calc(100vw - 24px));
+  padding: 14px 16px;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: #c8c8c8;
+  font-size: 12px;
+  line-height: 1.45;
+  backdrop-filter: blur(8px);
+  z-index: 2;
+  user-select: none;
+}
+
+#hud.hidden {
+  display: none;
+}
+
+#hud .title {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+#hud .sub {
+  color: #777;
+  margin: 2px 0 12px;
+  font-size: 11px;
+}
+
+#hud dl {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+
+#hud dl > div {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+
+#hud dt {
+  margin: 0;
+  color: #8f8;
+  font-weight: 600;
+}
+
+#hud dd {
+  margin: 0;
+  color: #aaa;
+}
+
+#stats {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  color: #666;
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+
+html, body { cursor: none; }
+#hud { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<aside id="hud" class="hidden" aria-hidden="true"></aside>
+<script>
+window.SELF_MELT_SOURCE = "/**\n * Self-Melt \u2014 Canvas2D mini Meltdown\n * \u6e90\u7801\u5373\u753b\u9762\uff1a\u8bfb\u53d6\u672c\u6587\u4ef6 \u2192 \u7b80\u6613\u8bed\u6cd5\u9ad8\u4eae \u2192 \u5b57\u7b26\u7f51\u683c\u878d\u5316\n */\n\n// \u2500\u2500 Token types \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst T = {\n  DEFAULT: 0,\n  KEYWORD: 1,\n  IDENT: 2,\n  NUMBER: 3,\n  STRING: 4,\n  COMMENT: 5,\n  OP: 6,\n  PUNCT: 7,\n};\n\nconst KEYWORDS = new Set([\n  \"const\", \"let\", \"var\", \"function\", \"return\", \"if\", \"else\", \"for\", \"while\",\n  \"do\", \"switch\", \"case\", \"break\", \"continue\", \"new\", \"this\", \"class\",\n  \"extends\", \"import\", \"export\", \"from\", \"async\", \"await\", \"try\", \"catch\",\n  \"finally\", \"throw\", \"typeof\", \"instanceof\", \"in\", \"of\", \"null\", \"true\",\n  \"false\", \"undefined\", \"void\", \"delete\", \"yield\", \"static\", \"get\", \"set\",\n]);\n\n// \u2500\u2500 Palettes (bg, then token colors as [r,g,b]) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst PALETTES = [\n  {\n    name: \"MONO\",\n    bg: [8, 8, 8],\n    tokens: {\n      [T.DEFAULT]: [153, 153, 153],\n      [T.KEYWORD]: [220, 220, 220],\n      [T.IDENT]: [170, 170, 170],\n      [T.NUMBER]: [200, 200, 200],\n      [T.STRING]: [180, 180, 180],\n      [T.COMMENT]: [90, 90, 90],\n      [T.OP]: [140, 140, 140],\n      [T.PUNCT]: [120, 120, 120],\n    },\n  },\n  {\n    name: \"MATRIX\",\n    bg: [0, 12, 0],\n    tokens: {\n      [T.DEFAULT]: [0, 180, 70],\n      [T.KEYWORD]: [120, 255, 140],\n      [T.IDENT]: [0, 210, 90],\n      [T.NUMBER]: [180, 255, 120],\n      [T.STRING]: [80, 220, 160],\n      [T.COMMENT]: [0, 90, 40],\n      [T.OP]: [0, 160, 80],\n      [T.PUNCT]: [0, 140, 70],\n    },\n  },\n  {\n    name: \"BSOD\",\n    bg: [0, 0, 170],\n    tokens: {\n      [T.DEFAULT]: [180, 180, 200],\n      [T.KEYWORD]: [255, 255, 255],\n      [T.IDENT]: [200, 200, 255],\n      [T.NUMBER]: [255, 255, 120],\n      [T.STRING]: [255, 160, 160],\n      [T.COMMENT]: [100, 100, 180],\n      [T.OP]: [220, 220, 255],\n      [T.PUNCT]: [160, 160, 200],\n    },\n  },\n  {\n    name: \"EMBER\",\n    bg: [12, 4, 0],\n    tokens: {\n      [T.DEFAULT]: [200, 120, 60],\n      [T.KEYWORD]: [255, 200, 80],\n      [T.IDENT]: [240, 140, 70],\n      [T.NUMBER]: [255, 220, 100],\n      [T.STRING]: [255, 100, 80],\n      [T.COMMENT]: [100, 50, 30],\n      [T.OP]: [220, 100, 50],\n      [T.PUNCT]: [160, 80, 40],\n    },\n  },\n];\n\n// \u2500\u2500 Simple tokenizer \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction isAlpha(c) {\n  return /[A-Za-z_$]/.test(c);\n}\nfunction isDigit(c) {\n  return c >= \"0\" && c <= \"9\";\n}\nfunction isAlnum(c) {\n  return isAlpha(c) || isDigit(c);\n}\n\n/** @returns {{ char: string, type: number }[]} */\nfunction tokenizeLine(line) {\n  const out = [];\n  let i = 0;\n  const push = (ch, type) => out.push({ char: ch, type });\n\n  while (i < line.length) {\n    const c = line[i];\n\n    // // comment\n    if (c === \"/\" && line[i + 1] === \"/\") {\n      while (i < line.length) push(line[i++], T.COMMENT);\n      break;\n    }\n\n    // string\n    if (c === '\"' || c === \"'\" || c === \"`\") {\n      const q = c;\n      push(c, T.STRING);\n      i++;\n      while (i < line.length) {\n        push(line[i], T.STRING);\n        if (line[i] === \"\\\\\" && i + 1 < line.length) {\n          i++;\n          push(line[i], T.STRING);\n          i++;\n          continue;\n        }\n        if (line[i] === q) {\n          i++;\n          break;\n        }\n        i++;\n      }\n      continue;\n    }\n\n    // number\n    if (isDigit(c) || (c === \".\" && isDigit(line[i + 1]))) {\n      while (i < line.length && (isDigit(line[i]) || \"xXeE.+-\".includes(line[i]))) {\n        push(line[i++], T.NUMBER);\n      }\n      continue;\n    }\n\n    // identifier / keyword\n    if (isAlpha(c)) {\n      let j = i + 1;\n      while (j < line.length && isAlnum(line[j])) j++;\n      const word = line.slice(i, j);\n      const type = KEYWORDS.has(word) ? T.KEYWORD : T.IDENT;\n      while (i < j) push(line[i++], type);\n      continue;\n    }\n\n    // operators\n    if (\"=+-*/%<>!&|^~?:\".includes(c)) {\n      push(c, T.OP);\n      i++;\n      continue;\n    }\n\n    // punctuation\n    if (\"(){}[];,.\".includes(c)) {\n      push(c, T.PUNCT);\n      i++;\n      continue;\n    }\n\n    push(c, T.DEFAULT);\n    i++;\n  }\n  return out;\n}\n\nfunction tokenizeSource(src) {\n  return src\n    .split(\"\\n\")\n    .filter((line) => line.trim().length > 0)\n    .map((line) => tokenizeLine(line.replace(/\\t/g, \"  \")));\n}\n\n// \u2500\u2500 Seeded RNG (xfnv1a + sfc-ish LCG mix) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction makeRng(seedStr) {\n  let h = 2166136261 >>> 0;\n  for (let i = 0; i < seedStr.length; i++) {\n    h = Math.imul(h ^ seedStr.charCodeAt(i), 16777619);\n  }\n  let a = h >>> 0;\n  let b = (h * 1664525 + 1013904223) >>> 0;\n  let c = (b * 1664525 + 1013904223) >>> 0;\n  let d = (c * 1664525 + 1013904223) >>> 0;\n  return {\n    next() {\n      // sfc32-inspired\n      const t = (a + b + d) >>> 0;\n      d = (d + 1) >>> 0;\n      a = b ^ (b >>> 9);\n      b = (c + (c << 3)) >>> 0;\n      c = (((c << 21) | (c >>> 11)) + t) >>> 0;\n      return t / 4294967296;\n    },\n    float(min = 0, max = 1) {\n      return min + this.next() * (max - min);\n    },\n    int(min, max) {\n      return Math.floor(this.float(min, max));\n    },\n    pick(arr) {\n      return arr[this.int(0, arr.length)];\n    },\n    chance(p) {\n      return this.next() < p;\n    },\n  };\n}\n\n// \u2500\u2500 Value noise (cheap, deterministic) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction hash2(x, y, seed) {\n  let n = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ seed;\n  n = Math.imul(n ^ (n >>> 13), 1274126177);\n  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;\n}\n\nfunction smooth(t) {\n  return t * t * t * (t * (t * 6 - 15) + 10);\n}\n\nfunction noise2(x, y, seed) {\n  const x0 = Math.floor(x);\n  const y0 = Math.floor(y);\n  const fx = smooth(x - x0);\n  const fy = smooth(y - y0);\n  const v00 = hash2(x0, y0, seed);\n  const v10 = hash2(x0 + 1, y0, seed);\n  const v01 = hash2(x0, y0 + 1, seed);\n  const v11 = hash2(x0 + 1, y0 + 1, seed);\n  const a = v00 + (v10 - v00) * fx;\n  const b = v01 + (v11 - v01) * fx;\n  return a + (b - a) * fy;\n}\n\n// 9 neighbor directions (index 0 = stay)\nconst DIRS = [\n  [0, 0],\n  [0, -1],\n  [1, -1],\n  [1, 0],\n  [1, 1],\n  [0, 1],\n  [-1, 1],\n  [-1, 0],\n  [-1, -1],\n];\n\n// \u2500\u2500 Cell grid \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nfunction makeGrid(cols, rows, fill) {\n  const data = new Array(cols * rows);\n  for (let i = 0; i < data.length; i++) data[i] = fill();\n  return {\n    cols,\n    rows,\n    data,\n    get(x, y) {\n      if (x < 0 || y < 0 || x >= cols || y >= rows) return null;\n      return data[y * cols + x];\n    },\n    getWrapped(x, y) {\n      x = ((x % cols) + cols) % cols;\n      y = ((y % rows) + rows) % rows;\n      return data[y * cols + x];\n    },\n  };\n}\n\nfunction emptyCell() {\n  return { ch: \" \", type: T.DEFAULT, fg: null };\n}\n\n// \u2500\u2500 App \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst canvas = document.getElementById(\"c\");\nconst ctx = canvas.getContext(\"2d\", { alpha: false });\nconst statsEl = document.getElementById(\"stats\");\nconst hudEl = document.getElementById(\"hud\");\n\n// Screensaver / kiosk: hide UI chrome\nconst qs = new URLSearchParams(location.search);\nconst isScreensaver =\n  globalThis.SELF_MELT_SCREENSAVER === true ||\n  qs.get(\"screensaver\") === \"1\" ||\n  qs.get(\"hud\") === \"0\";\nif (isScreensaver && hudEl) {\n  hudEl.classList.add(\"hidden\");\n  hudEl.style.display = \"none\";\n}\n// statsEl may be missing in the single-file screensaver build\nconst setStats = (text) => {\n  if (statsEl) statsEl.textContent = text;\n};\n\nconst state = {\n  lines: [], // tokenized source\n  paletteIdx: 1,\n  cellW: 9,\n  cellH: 16,\n  fontSize: 13,\n  scale: 1,\n  cols: 0,\n  rows: 0,\n  grids: null, // [src, dst]\n  front: 0,\n  scrollX: 0,\n  scrollY: 0,\n  maskH: 0,\n  targetMaskH: 0,\n  meltEvery: 2, // frames between melt ticks\n  speed: 1,\n  paused: false,\n  frame: 0,\n  seed: \"self-melt\",\n  rng: null,\n  noiseSeed: 0,\n  warpMode: \"noise\", // noise | plasma | bands\n  keys: { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false },\n  dragging: false,\n  dragStart: null,\n  fps: 0,\n  lastFpsT: 0,\n  fpsCount: 0,\n};\n\nasync function loadSource() {\n  // Screensaver / single-file build: source embedded on window\n  if (\n    typeof globalThis.SELF_MELT_SOURCE === \"string\" &&\n    globalThis.SELF_MELT_SOURCE.length > 0\n  ) {\n    return globalThis.SELF_MELT_SOURCE;\n  }\n  // Prefer fetching this module (works under any local server)\n  try {\n    const url = new URL(\"./main.js\", import.meta.url);\n    const res = await fetch(url);\n    if (res.ok) return await res.text();\n  } catch {\n    /* file:// may block fetch */\n  }\n  // Fallback: embedded sample so file:// still shows something\n  return `// Self-Melt fallback source (serve over http for real self-view)\nconst hello = \"open via: npm start\";\nfunction melt(x, y, t) {\n  const n = Math.sin(x * 0.1 + t) + Math.cos(y * 0.1 - t);\n  return n > 0 ? 1 : 0;\n}\n// Press R to reset \u00b7 1-4 for palettes \u00b7 Space to pause\nfor (let i = 0; i < 16; i++) {\n  console.log(\"line\", i, melt(i, i, 0));\n}\n`;\n}\n\nfunction resize() {\n  const dpr = Math.min(window.devicePixelRatio || 1, 2);\n  const w = window.innerWidth;\n  const h = window.innerHeight;\n  canvas.width = Math.floor(w * dpr);\n  canvas.height = Math.floor(h * dpr);\n  canvas.style.width = w + \"px\";\n  canvas.style.height = h + \"px\";\n  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);\n\n  const cw = state.cellW * state.scale;\n  const ch = state.cellH * state.scale;\n  const cols = Math.max(8, Math.floor(w / cw));\n  const rows = Math.max(4, Math.floor(h / ch));\n\n  if (cols !== state.cols || rows !== state.rows) {\n    state.cols = cols;\n    state.rows = rows;\n    state.grids = [\n      makeGrid(cols, rows, emptyCell),\n      makeGrid(cols, rows, emptyCell),\n    ];\n    state.front = 0;\n    state.maskH = 0;\n    state.targetMaskH = rows;\n    clearGrids();\n  }\n}\n\nfunction clearGrids() {\n  if (!state.grids) return;\n  const pal = PALETTES[state.paletteIdx];\n  for (const g of state.grids) {\n    for (const cell of g.data) {\n      cell.ch = \" \";\n      cell.type = T.DEFAULT;\n      cell.fg = pal.tokens[T.DEFAULT];\n    }\n  }\n}\n\nfunction warpDir(i, j, t) {\n  const cols = state.cols;\n  const rows = state.rows;\n  const aspect = cols / rows;\n  const s = (i / cols) * 2 - 1;\n  const u = (j / rows) * 2 - 1;\n  let n;\n\n  if (state.warpMode === \"plasma\") {\n    const f = t * 0.04;\n    const v =\n      Math.sin(s * 3 + f) +\n      Math.cos(u * 3 - f * 1.3) +\n      Math.sin((s + u) * 2 + f * 0.7) +\n      Math.cos(Math.hypot(s, u) * 4 - f);\n    n = (v + 4) / 8;\n  } else if (state.warpMode === \"bands\") {\n    const band = Math.floor(j / 4) % 2;\n    return band ? 3 : 7; // right or left\n  } else {\n    // noise field \u2192 direction bin\n    n = noise2(s * aspect * 1.4 + t * 0.01, u * 1.4 - t * 0.008, state.noiseSeed);\n  }\n\n  return Math.min(8, Math.floor(Math.max(0, Math.min(0.999, n)) * 9));\n}\n\nfunction meltTick() {\n  const src = state.grids[state.front];\n  const dst = state.grids[1 - state.front];\n  const t = state.frame * state.speed;\n\n  for (let j = 0; j < state.rows; j++) {\n    for (let i = 0; i < state.cols; i++) {\n      const bin = warpDir(i, j, t);\n      const [dx, dy] = DIRS[bin];\n      const from = src.getWrapped(i + dx, j + dy);\n      const to = dst.get(i, j);\n      to.ch = from.ch;\n      to.type = from.type;\n      to.fg = from.fg;\n    }\n  }\n  state.front = 1 - state.front;\n\n  // occasionally switch warp personality\n  if (state.rng.chance(0.008)) {\n    state.warpMode = state.rng.pick([\"noise\", \"plasma\", \"bands\"]);\n  }\n}\n\nfunction writeSourceIntoGrid() {\n  const grid = state.grids[state.front];\n  const pal = PALETTES[state.paletteIdx];\n  const lines = state.lines;\n  if (!lines.length) return;\n\n  // grow reveal mask\n  if (state.maskH < state.targetMaskH) {\n    state.maskH = Math.min(state.maskH + 1, state.targetMaskH);\n  }\n\n  for (let j = 0; j < state.maskH; j++) {\n    const lineIdx = (state.scrollY + j) % lines.length;\n    const line = lines[lineIdx];\n    for (let i = 0; i < line.length; i++) {\n      const col = (i + state.scrollX) % state.cols;\n      const cell = grid.get(col, j);\n      if (!cell) continue;\n      const tok = line[i];\n      cell.ch = tok.char === \"\\t\" ? \" \" : tok.char;\n      cell.type = tok.type;\n      cell.fg = pal.tokens[tok.type] ?? pal.tokens[T.DEFAULT];\n    }\n  }\n\n  // wave dig holes (meltdown-ish)\n  const t = state.frame * 0.01 * state.speed;\n  for (let j = 0; j < state.rows; j++) {\n    for (let i = 0; i < state.cols; i++) {\n      const cell = grid.get(i, j);\n      if (!cell || cell.ch === \" \") continue;\n      const n = noise2(i * 0.08, j * 0.08 + t, state.noiseSeed + 99);\n      const wave = Math.sin(j * 0.15 + t * 2) * 0.5 + 0.5;\n      if (n * wave > 0.72) {\n        cell.ch = \" \";\n      }\n    }\n  }\n}\n\nfunction autoScroll() {\n  if (state.keys.ArrowUp) state.scrollY = (state.scrollY - 1 + state.lines.length) % state.lines.length;\n  if (state.keys.ArrowDown) state.scrollY = (state.scrollY + 1) % state.lines.length;\n  if (state.keys.ArrowLeft) state.scrollX = (state.scrollX - 1 + state.cols) % state.cols;\n  if (state.keys.ArrowRight) state.scrollX = (state.scrollX + 1) % state.cols;\n\n  // idle drift\n  if (!state.keys.ArrowUp && !state.keys.ArrowDown && !state.dragging && state.frame % 8 === 0) {\n    state.scrollY = (state.scrollY + 1) % Math.max(1, state.lines.length);\n  }\n}\n\nfunction draw() {\n  const pal = PALETTES[state.paletteIdx];\n  const w = window.innerWidth;\n  const h = window.innerHeight;\n  ctx.fillStyle = `rgb(${pal.bg.join(\",\")})`;\n  ctx.fillRect(0, 0, w, h);\n\n  const cw = state.cellW * state.scale;\n  const ch = state.cellH * state.scale;\n  const grid = state.grids[state.front];\n\n  ctx.font = `${state.fontSize * state.scale}px ui-monospace, Menlo, Monaco, Consolas, monospace`;\n  ctx.textBaseline = \"top\";\n\n  // slight letterbox centering\n  const ox = Math.floor((w - state.cols * cw) / 2);\n  const oy = Math.floor((h - state.rows * ch) / 2);\n\n  for (let j = 0; j < state.rows; j++) {\n    for (let i = 0; i < state.cols; i++) {\n      const cell = grid.get(i, j);\n      if (!cell || cell.ch === \" \") continue;\n      const fg = cell.fg || pal.tokens[T.DEFAULT];\n      ctx.fillStyle = `rgb(${fg[0]},${fg[1]},${fg[2]})`;\n      ctx.fillText(cell.ch, ox + i * cw, oy + j * ch);\n    }\n  }\n\n  // title bar faint\n  ctx.fillStyle = \"rgba(255,255,255,0.06)\";\n  ctx.fillRect(0, 0, w, 22);\n  ctx.fillStyle = \"rgba(255,255,255,0.35)\";\n  ctx.font = \"11px ui-monospace, Menlo, monospace\";\n  ctx.fillText(\n    `Self-Melt \u00b7 ${pal.name} \u00b7 warp:${state.warpMode} \u00b7 speed:${state.speed.toFixed(1)}`,\n    10,\n    5,\n  );\n}\n\nfunction updateStats() {\n  const pal = PALETTES[state.paletteIdx];\n  setStats(\n    [\n      `fps ${state.fps}`,\n      `grid ${state.cols}\u00d7${state.rows}`,\n      `lines ${state.lines.length}`,\n      `palette ${pal.name}`,\n      `melt every ${state.meltEvery}f`,\n      state.paused ? \"PAUSED\" : \"running\",\n    ].join(\" \u00b7 \"),\n  );\n}\n\nfunction frame(now) {\n  requestAnimationFrame(frame);\n\n  state.fpsCount++;\n  if (now - state.lastFpsT >= 1000) {\n    state.fps = state.fpsCount;\n    state.fpsCount = 0;\n    state.lastFpsT = now;\n    updateStats();\n  }\n\n  if (state.paused) {\n    draw();\n    return;\n  }\n\n  state.frame++;\n  autoScroll();\n\n  if (state.frame % state.meltEvery === 0) {\n    meltTick();\n  }\n  writeSourceIntoGrid();\n  draw();\n}\n\nfunction resetMelt() {\n  state.rng = makeRng(state.seed + \":\" + Date.now());\n  state.noiseSeed = state.rng.int(0, 1e9);\n  state.warpMode = state.rng.pick([\"noise\", \"plasma\", \"bands\"]);\n  state.scrollX = 0;\n  state.scrollY = state.rng.int(0, Math.max(1, state.lines.length));\n  state.maskH = 0;\n  state.targetMaskH = state.rows;\n  state.frame = 0;\n  clearGrids();\n}\n\n// \u2500\u2500 Input \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nwindow.addEventListener(\"resize\", resize);\n\nwindow.addEventListener(\"keydown\", (e) => {\n  if (e.key in state.keys) {\n    e.preventDefault();\n    state.keys[e.key] = true;\n    return;\n  }\n  if (e.key === \" \") {\n    e.preventDefault();\n    state.paused = !state.paused;\n  } else if (e.key === \"r\" || e.key === \"R\") {\n    resetMelt();\n  } else if (e.key === \"h\" || e.key === \"H\") {\n    hudEl.classList.toggle(\"hidden\");\n  } else if (e.key >= \"1\" && e.key <= \"4\") {\n    state.paletteIdx = Number(e.key) - 1;\n  } else if (e.key === \"[\") {\n    state.meltEvery = Math.min(8, state.meltEvery + 1);\n  } else if (e.key === \"]\") {\n    state.meltEvery = Math.max(1, state.meltEvery - 1);\n  } else if (e.key === \"-\" || e.key === \"_\") {\n    state.scale = Math.max(0.75, +(state.scale - 0.25).toFixed(2));\n    state.cols = 0; // force grid rebuild\n    resize();\n  } else if (e.key === \"=\" || e.key === \"+\") {\n    state.scale = Math.min(2.5, +(state.scale + 0.25).toFixed(2));\n    state.cols = 0;\n    resize();\n  } else if (e.key === \",\") {\n    state.speed = Math.max(0.25, +(state.speed - 0.25).toFixed(2));\n  } else if (e.key === \".\") {\n    state.speed = Math.min(3, +(state.speed + 0.25).toFixed(2));\n  }\n  updateStats();\n});\n\nwindow.addEventListener(\"keyup\", (e) => {\n  if (e.key in state.keys) state.keys[e.key] = false;\n});\n\ncanvas.addEventListener(\"pointerdown\", (e) => {\n  state.dragging = true;\n  state.dragStart = {\n    x: e.clientX,\n    y: e.clientY,\n    scrollX: state.scrollX,\n    scrollY: state.scrollY,\n  };\n  canvas.setPointerCapture(e.pointerId);\n});\n\ncanvas.addEventListener(\"pointermove\", (e) => {\n  if (!state.dragging || !state.dragStart) return;\n  const cw = state.cellW * state.scale;\n  const ch = state.cellH * state.scale;\n  const dx = Math.round((e.clientX - state.dragStart.x) / cw);\n  const dy = Math.round((e.clientY - state.dragStart.y) / ch);\n  state.scrollX = ((state.dragStart.scrollX - dx) % state.cols + state.cols) % state.cols;\n  state.scrollY =\n    ((state.dragStart.scrollY - dy) % state.lines.length + state.lines.length) %\n    state.lines.length;\n});\n\nconst endDrag = () => {\n  state.dragging = false;\n  state.dragStart = null;\n};\ncanvas.addEventListener(\"pointerup\", endDrag);\ncanvas.addEventListener(\"pointercancel\", endDrag);\n\n// \u2500\u2500 Boot \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nasync function boot() {\n  setStats(\"loading source\u2026\");\n  // In screensaver mode, pick a random palette each launch\n  if (isScreensaver) {\n    state.paletteIdx = Math.floor(Math.random() * PALETTES.length);\n  }\n  const src = await loadSource();\n  state.lines = tokenizeSource(src);\n  state.rng = makeRng(state.seed);\n  state.noiseSeed = state.rng.int(0, 1e9);\n  resize();\n  resetMelt();\n  updateStats();\n  requestAnimationFrame(frame);\n}\n\nboot().catch((err) => {\n  setStats(\"boot failed: \" + err.message);\n  console.error(err);\n});\n";
+window.SELF_MELT_SCREENSAVER = true;
+</script>
+<script type="module">
+/**
+ * Self-Melt — Canvas2D mini Meltdown
+ * 源码即画面：读取本文件 → 简易语法高亮 → 字符网格融化
+ */
+
+// ── Token types ──────────────────────────────────────────────
+const T = {
+  DEFAULT: 0,
+  KEYWORD: 1,
+  IDENT: 2,
+  NUMBER: 3,
+  STRING: 4,
+  COMMENT: 5,
+  OP: 6,
+  PUNCT: 7,
+};
+
+const KEYWORDS = new Set([
+  "const", "let", "var", "function", "return", "if", "else", "for", "while",
+  "do", "switch", "case", "break", "continue", "new", "this", "class",
+  "extends", "import", "export", "from", "async", "await", "try", "catch",
+  "finally", "throw", "typeof", "instanceof", "in", "of", "null", "true",
+  "false", "undefined", "void", "delete", "yield", "static", "get", "set",
+]);
+
+// ── Palettes (bg, then token colors as [r,g,b]) ──────────────
+const PALETTES = [
+  {
+    name: "MONO",
+    bg: [8, 8, 8],
+    tokens: {
+      [T.DEFAULT]: [153, 153, 153],
+      [T.KEYWORD]: [220, 220, 220],
+      [T.IDENT]: [170, 170, 170],
+      [T.NUMBER]: [200, 200, 200],
+      [T.STRING]: [180, 180, 180],
+      [T.COMMENT]: [90, 90, 90],
+      [T.OP]: [140, 140, 140],
+      [T.PUNCT]: [120, 120, 120],
+    },
+  },
+  {
+    name: "MATRIX",
+    bg: [0, 12, 0],
+    tokens: {
+      [T.DEFAULT]: [0, 180, 70],
+      [T.KEYWORD]: [120, 255, 140],
+      [T.IDENT]: [0, 210, 90],
+      [T.NUMBER]: [180, 255, 120],
+      [T.STRING]: [80, 220, 160],
+      [T.COMMENT]: [0, 90, 40],
+      [T.OP]: [0, 160, 80],
+      [T.PUNCT]: [0, 140, 70],
+    },
+  },
+  {
+    name: "BSOD",
+    bg: [0, 0, 170],
+    tokens: {
+      [T.DEFAULT]: [180, 180, 200],
+      [T.KEYWORD]: [255, 255, 255],
+      [T.IDENT]: [200, 200, 255],
+      [T.NUMBER]: [255, 255, 120],
+      [T.STRING]: [255, 160, 160],
+      [T.COMMENT]: [100, 100, 180],
+      [T.OP]: [220, 220, 255],
+      [T.PUNCT]: [160, 160, 200],
+    },
+  },
+  {
+    name: "EMBER",
+    bg: [12, 4, 0],
+    tokens: {
+      [T.DEFAULT]: [200, 120, 60],
+      [T.KEYWORD]: [255, 200, 80],
+      [T.IDENT]: [240, 140, 70],
+      [T.NUMBER]: [255, 220, 100],
+      [T.STRING]: [255, 100, 80],
+      [T.COMMENT]: [100, 50, 30],
+      [T.OP]: [220, 100, 50],
+      [T.PUNCT]: [160, 80, 40],
+    },
+  },
+];
+
+// ── Simple tokenizer ─────────────────────────────────────────
+function isAlpha(c) {
+  return /[A-Za-z_$]/.test(c);
+}
+function isDigit(c) {
+  return c >= "0" && c <= "9";
+}
+function isAlnum(c) {
+  return isAlpha(c) || isDigit(c);
+}
+
+/** @returns {{ char: string, type: number }[]} */
+function tokenizeLine(line) {
+  const out = [];
+  let i = 0;
+  const push = (ch, type) => out.push({ char: ch, type });
+
+  while (i < line.length) {
+    const c = line[i];
+
+    // // comment
+    if (c === "/" && line[i + 1] === "/") {
+      while (i < line.length) push(line[i++], T.COMMENT);
+      break;
+    }
+
+    // string
+    if (c === '"' || c === "'" || c === "`") {
+      const q = c;
+      push(c, T.STRING);
+      i++;
+      while (i < line.length) {
+        push(line[i], T.STRING);
+        if (line[i] === "\\" && i + 1 < line.length) {
+          i++;
+          push(line[i], T.STRING);
+          i++;
+          continue;
+        }
+        if (line[i] === q) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+
+    // number
+    if (isDigit(c) || (c === "." && isDigit(line[i + 1]))) {
+      while (i < line.length && (isDigit(line[i]) || "xXeE.+-".includes(line[i]))) {
+        push(line[i++], T.NUMBER);
+      }
+      continue;
+    }
+
+    // identifier / keyword
+    if (isAlpha(c)) {
+      let j = i + 1;
+      while (j < line.length && isAlnum(line[j])) j++;
+      const word = line.slice(i, j);
+      const type = KEYWORDS.has(word) ? T.KEYWORD : T.IDENT;
+      while (i < j) push(line[i++], type);
+      continue;
+    }
+
+    // operators
+    if ("=+-*/%<>!&|^~?:".includes(c)) {
+      push(c, T.OP);
+      i++;
+      continue;
+    }
+
+    // punctuation
+    if ("(){}[];,.".includes(c)) {
+      push(c, T.PUNCT);
+      i++;
+      continue;
+    }
+
+    push(c, T.DEFAULT);
+    i++;
+  }
+  return out;
+}
+
+function tokenizeSource(src) {
+  return src
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => tokenizeLine(line.replace(/\t/g, "  ")));
+}
+
+// ── Seeded RNG (xfnv1a + sfc-ish LCG mix) ────────────────────
+function makeRng(seedStr) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < seedStr.length; i++) {
+    h = Math.imul(h ^ seedStr.charCodeAt(i), 16777619);
+  }
+  let a = h >>> 0;
+  let b = (h * 1664525 + 1013904223) >>> 0;
+  let c = (b * 1664525 + 1013904223) >>> 0;
+  let d = (c * 1664525 + 1013904223) >>> 0;
+  return {
+    next() {
+      // sfc32-inspired
+      const t = (a + b + d) >>> 0;
+      d = (d + 1) >>> 0;
+      a = b ^ (b >>> 9);
+      b = (c + (c << 3)) >>> 0;
+      c = (((c << 21) | (c >>> 11)) + t) >>> 0;
+      return t / 4294967296;
+    },
+    float(min = 0, max = 1) {
+      return min + this.next() * (max - min);
+    },
+    int(min, max) {
+      return Math.floor(this.float(min, max));
+    },
+    pick(arr) {
+      return arr[this.int(0, arr.length)];
+    },
+    chance(p) {
+      return this.next() < p;
+    },
+  };
+}
+
+// ── Value noise (cheap, deterministic) ───────────────────────
+function hash2(x, y, seed) {
+  let n = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ seed;
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+
+function smooth(t) {
+  return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+function noise2(x, y, seed) {
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const fx = smooth(x - x0);
+  const fy = smooth(y - y0);
+  const v00 = hash2(x0, y0, seed);
+  const v10 = hash2(x0 + 1, y0, seed);
+  const v01 = hash2(x0, y0 + 1, seed);
+  const v11 = hash2(x0 + 1, y0 + 1, seed);
+  const a = v00 + (v10 - v00) * fx;
+  const b = v01 + (v11 - v01) * fx;
+  return a + (b - a) * fy;
+}
+
+// 9 neighbor directions (index 0 = stay)
+const DIRS = [
+  [0, 0],
+  [0, -1],
+  [1, -1],
+  [1, 0],
+  [1, 1],
+  [0, 1],
+  [-1, 1],
+  [-1, 0],
+  [-1, -1],
+];
+
+// ── Cell grid ────────────────────────────────────────────────
+function makeGrid(cols, rows, fill) {
+  const data = new Array(cols * rows);
+  for (let i = 0; i < data.length; i++) data[i] = fill();
+  return {
+    cols,
+    rows,
+    data,
+    get(x, y) {
+      if (x < 0 || y < 0 || x >= cols || y >= rows) return null;
+      return data[y * cols + x];
+    },
+    getWrapped(x, y) {
+      x = ((x % cols) + cols) % cols;
+      y = ((y % rows) + rows) % rows;
+      return data[y * cols + x];
+    },
+  };
+}
+
+function emptyCell() {
+  return { ch: " ", type: T.DEFAULT, fg: null };
+}
+
+// ── App ──────────────────────────────────────────────────────
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d", { alpha: false });
+const statsEl = document.getElementById("stats");
+const hudEl = document.getElementById("hud");
+
+// Screensaver / kiosk: hide UI chrome
+const qs = new URLSearchParams(location.search);
+const isScreensaver =
+  globalThis.SELF_MELT_SCREENSAVER === true ||
+  qs.get("screensaver") === "1" ||
+  qs.get("hud") === "0";
+if (isScreensaver && hudEl) {
+  hudEl.classList.add("hidden");
+  hudEl.style.display = "none";
+}
+// statsEl may be missing in the single-file screensaver build
+const setStats = (text) => {
+  if (statsEl) statsEl.textContent = text;
+};
+
+const state = {
+  lines: [], // tokenized source
+  paletteIdx: 1,
+  cellW: 9,
+  cellH: 16,
+  fontSize: 13,
+  scale: 1,
+  cols: 0,
+  rows: 0,
+  grids: null, // [src, dst]
+  front: 0,
+  scrollX: 0,
+  scrollY: 0,
+  maskH: 0,
+  targetMaskH: 0,
+  meltEvery: 2, // frames between melt ticks
+  speed: 1,
+  paused: false,
+  frame: 0,
+  seed: "self-melt",
+  rng: null,
+  noiseSeed: 0,
+  warpMode: "noise", // noise | plasma | bands
+  keys: { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false },
+  dragging: false,
+  dragStart: null,
+  fps: 0,
+  lastFpsT: 0,
+  fpsCount: 0,
+};
+
+async function loadSource() {
+  // Screensaver / single-file build: source embedded on window
+  if (
+    typeof globalThis.SELF_MELT_SOURCE === "string" &&
+    globalThis.SELF_MELT_SOURCE.length > 0
+  ) {
+    return globalThis.SELF_MELT_SOURCE;
+  }
+  // Prefer fetching this module (works under any local server)
+  try {
+    const url = new URL("./main.js", import.meta.url);
+    const res = await fetch(url);
+    if (res.ok) return await res.text();
+  } catch {
+    /* file:// may block fetch */
+  }
+  // Fallback: embedded sample so file:// still shows something
+  return `// Self-Melt fallback source (serve over http for real self-view)
+const hello = "open via: npm start";
+function melt(x, y, t) {
+  const n = Math.sin(x * 0.1 + t) + Math.cos(y * 0.1 - t);
+  return n > 0 ? 1 : 0;
+}
+// Press R to reset · 1-4 for palettes · Space to pause
+for (let i = 0; i < 16; i++) {
+  console.log("line", i, melt(i, i, 0));
+}
+`;
+}
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  canvas.width = Math.floor(w * dpr);
+  canvas.height = Math.floor(h * dpr);
+  canvas.style.width = w + "px";
+  canvas.style.height = h + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const cw = state.cellW * state.scale;
+  const ch = state.cellH * state.scale;
+  const cols = Math.max(8, Math.floor(w / cw));
+  const rows = Math.max(4, Math.floor(h / ch));
+
+  if (cols !== state.cols || rows !== state.rows) {
+    state.cols = cols;
+    state.rows = rows;
+    state.grids = [
+      makeGrid(cols, rows, emptyCell),
+      makeGrid(cols, rows, emptyCell),
+    ];
+    state.front = 0;
+    state.maskH = 0;
+    state.targetMaskH = rows;
+    clearGrids();
+  }
+}
+
+function clearGrids() {
+  if (!state.grids) return;
+  const pal = PALETTES[state.paletteIdx];
+  for (const g of state.grids) {
+    for (const cell of g.data) {
+      cell.ch = " ";
+      cell.type = T.DEFAULT;
+      cell.fg = pal.tokens[T.DEFAULT];
+    }
+  }
+}
+
+function warpDir(i, j, t) {
+  const cols = state.cols;
+  const rows = state.rows;
+  const aspect = cols / rows;
+  const s = (i / cols) * 2 - 1;
+  const u = (j / rows) * 2 - 1;
+  let n;
+
+  if (state.warpMode === "plasma") {
+    const f = t * 0.04;
+    const v =
+      Math.sin(s * 3 + f) +
+      Math.cos(u * 3 - f * 1.3) +
+      Math.sin((s + u) * 2 + f * 0.7) +
+      Math.cos(Math.hypot(s, u) * 4 - f);
+    n = (v + 4) / 8;
+  } else if (state.warpMode === "bands") {
+    const band = Math.floor(j / 4) % 2;
+    return band ? 3 : 7; // right or left
+  } else {
+    // noise field → direction bin
+    n = noise2(s * aspect * 1.4 + t * 0.01, u * 1.4 - t * 0.008, state.noiseSeed);
+  }
+
+  return Math.min(8, Math.floor(Math.max(0, Math.min(0.999, n)) * 9));
+}
+
+function meltTick() {
+  const src = state.grids[state.front];
+  const dst = state.grids[1 - state.front];
+  const t = state.frame * state.speed;
+
+  for (let j = 0; j < state.rows; j++) {
+    for (let i = 0; i < state.cols; i++) {
+      const bin = warpDir(i, j, t);
+      const [dx, dy] = DIRS[bin];
+      const from = src.getWrapped(i + dx, j + dy);
+      const to = dst.get(i, j);
+      to.ch = from.ch;
+      to.type = from.type;
+      to.fg = from.fg;
+    }
+  }
+  state.front = 1 - state.front;
+
+  // occasionally switch warp personality
+  if (state.rng.chance(0.008)) {
+    state.warpMode = state.rng.pick(["noise", "plasma", "bands"]);
+  }
+}
+
+function writeSourceIntoGrid() {
+  const grid = state.grids[state.front];
+  const pal = PALETTES[state.paletteIdx];
+  const lines = state.lines;
+  if (!lines.length) return;
+
+  // grow reveal mask
+  if (state.maskH < state.targetMaskH) {
+    state.maskH = Math.min(state.maskH + 1, state.targetMaskH);
+  }
+
+  for (let j = 0; j < state.maskH; j++) {
+    const lineIdx = (state.scrollY + j) % lines.length;
+    const line = lines[lineIdx];
+    for (let i = 0; i < line.length; i++) {
+      const col = (i + state.scrollX) % state.cols;
+      const cell = grid.get(col, j);
+      if (!cell) continue;
+      const tok = line[i];
+      cell.ch = tok.char === "\t" ? " " : tok.char;
+      cell.type = tok.type;
+      cell.fg = pal.tokens[tok.type] ?? pal.tokens[T.DEFAULT];
+    }
+  }
+
+  // wave dig holes (meltdown-ish)
+  const t = state.frame * 0.01 * state.speed;
+  for (let j = 0; j < state.rows; j++) {
+    for (let i = 0; i < state.cols; i++) {
+      const cell = grid.get(i, j);
+      if (!cell || cell.ch === " ") continue;
+      const n = noise2(i * 0.08, j * 0.08 + t, state.noiseSeed + 99);
+      const wave = Math.sin(j * 0.15 + t * 2) * 0.5 + 0.5;
+      if (n * wave > 0.72) {
+        cell.ch = " ";
+      }
+    }
+  }
+}
+
+function autoScroll() {
+  if (state.keys.ArrowUp) state.scrollY = (state.scrollY - 1 + state.lines.length) % state.lines.length;
+  if (state.keys.ArrowDown) state.scrollY = (state.scrollY + 1) % state.lines.length;
+  if (state.keys.ArrowLeft) state.scrollX = (state.scrollX - 1 + state.cols) % state.cols;
+  if (state.keys.ArrowRight) state.scrollX = (state.scrollX + 1) % state.cols;
+
+  // idle drift
+  if (!state.keys.ArrowUp && !state.keys.ArrowDown && !state.dragging && state.frame % 8 === 0) {
+    state.scrollY = (state.scrollY + 1) % Math.max(1, state.lines.length);
+  }
+}
+
+function draw() {
+  const pal = PALETTES[state.paletteIdx];
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  ctx.fillStyle = `rgb(${pal.bg.join(",")})`;
+  ctx.fillRect(0, 0, w, h);
+
+  const cw = state.cellW * state.scale;
+  const ch = state.cellH * state.scale;
+  const grid = state.grids[state.front];
+
+  ctx.font = `${state.fontSize * state.scale}px ui-monospace, Menlo, Monaco, Consolas, monospace`;
+  ctx.textBaseline = "top";
+
+  // slight letterbox centering
+  const ox = Math.floor((w - state.cols * cw) / 2);
+  const oy = Math.floor((h - state.rows * ch) / 2);
+
+  for (let j = 0; j < state.rows; j++) {
+    for (let i = 0; i < state.cols; i++) {
+      const cell = grid.get(i, j);
+      if (!cell || cell.ch === " ") continue;
+      const fg = cell.fg || pal.tokens[T.DEFAULT];
+      ctx.fillStyle = `rgb(${fg[0]},${fg[1]},${fg[2]})`;
+      ctx.fillText(cell.ch, ox + i * cw, oy + j * ch);
+    }
+  }
+
+  // title bar faint
+  ctx.fillStyle = "rgba(255,255,255,0.06)";
+  ctx.fillRect(0, 0, w, 22);
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.font = "11px ui-monospace, Menlo, monospace";
+  ctx.fillText(
+    `Self-Melt · ${pal.name} · warp:${state.warpMode} · speed:${state.speed.toFixed(1)}`,
+    10,
+    5,
+  );
+}
+
+function updateStats() {
+  const pal = PALETTES[state.paletteIdx];
+  setStats(
+    [
+      `fps ${state.fps}`,
+      `grid ${state.cols}×${state.rows}`,
+      `lines ${state.lines.length}`,
+      `palette ${pal.name}`,
+      `melt every ${state.meltEvery}f`,
+      state.paused ? "PAUSED" : "running",
+    ].join(" · "),
+  );
+}
+
+function frame(now) {
+  requestAnimationFrame(frame);
+
+  state.fpsCount++;
+  if (now - state.lastFpsT >= 1000) {
+    state.fps = state.fpsCount;
+    state.fpsCount = 0;
+    state.lastFpsT = now;
+    updateStats();
+  }
+
+  if (state.paused) {
+    draw();
+    return;
+  }
+
+  state.frame++;
+  autoScroll();
+
+  if (state.frame % state.meltEvery === 0) {
+    meltTick();
+  }
+  writeSourceIntoGrid();
+  draw();
+}
+
+function resetMelt() {
+  state.rng = makeRng(state.seed + ":" + Date.now());
+  state.noiseSeed = state.rng.int(0, 1e9);
+  state.warpMode = state.rng.pick(["noise", "plasma", "bands"]);
+  state.scrollX = 0;
+  state.scrollY = state.rng.int(0, Math.max(1, state.lines.length));
+  state.maskH = 0;
+  state.targetMaskH = state.rows;
+  state.frame = 0;
+  clearGrids();
+}
+
+// ── Input ────────────────────────────────────────────────────
+window.addEventListener("resize", resize);
+
+window.addEventListener("keydown", (e) => {
+  if (e.key in state.keys) {
+    e.preventDefault();
+    state.keys[e.key] = true;
+    return;
+  }
+  if (e.key === " ") {
+    e.preventDefault();
+    state.paused = !state.paused;
+  } else if (e.key === "r" || e.key === "R") {
+    resetMelt();
+  } else if (e.key === "h" || e.key === "H") {
+    hudEl.classList.toggle("hidden");
+  } else if (e.key >= "1" && e.key <= "4") {
+    state.paletteIdx = Number(e.key) - 1;
+  } else if (e.key === "[") {
+    state.meltEvery = Math.min(8, state.meltEvery + 1);
+  } else if (e.key === "]") {
+    state.meltEvery = Math.max(1, state.meltEvery - 1);
+  } else if (e.key === "-" || e.key === "_") {
+    state.scale = Math.max(0.75, +(state.scale - 0.25).toFixed(2));
+    state.cols = 0; // force grid rebuild
+    resize();
+  } else if (e.key === "=" || e.key === "+") {
+    state.scale = Math.min(2.5, +(state.scale + 0.25).toFixed(2));
+    state.cols = 0;
+    resize();
+  } else if (e.key === ",") {
+    state.speed = Math.max(0.25, +(state.speed - 0.25).toFixed(2));
+  } else if (e.key === ".") {
+    state.speed = Math.min(3, +(state.speed + 0.25).toFixed(2));
+  }
+  updateStats();
+});
+
+window.addEventListener("keyup", (e) => {
+  if (e.key in state.keys) state.keys[e.key] = false;
+});
+
+canvas.addEventListener("pointerdown", (e) => {
+  state.dragging = true;
+  state.dragStart = {
+    x: e.clientX,
+    y: e.clientY,
+    scrollX: state.scrollX,
+    scrollY: state.scrollY,
+  };
+  canvas.setPointerCapture(e.pointerId);
+});
+
+canvas.addEventListener("pointermove", (e) => {
+  if (!state.dragging || !state.dragStart) return;
+  const cw = state.cellW * state.scale;
+  const ch = state.cellH * state.scale;
+  const dx = Math.round((e.clientX - state.dragStart.x) / cw);
+  const dy = Math.round((e.clientY - state.dragStart.y) / ch);
+  state.scrollX = ((state.dragStart.scrollX - dx) % state.cols + state.cols) % state.cols;
+  state.scrollY =
+    ((state.dragStart.scrollY - dy) % state.lines.length + state.lines.length) %
+    state.lines.length;
+});
+
+const endDrag = () => {
+  state.dragging = false;
+  state.dragStart = null;
+};
+canvas.addEventListener("pointerup", endDrag);
+canvas.addEventListener("pointercancel", endDrag);
+
+// ── Boot ─────────────────────────────────────────────────────
+async function boot() {
+  setStats("loading source…");
+  // In screensaver mode, pick a random palette each launch
+  if (isScreensaver) {
+    state.paletteIdx = Math.floor(Math.random() * PALETTES.length);
+  }
+  const src = await loadSource();
+  state.lines = tokenizeSource(src);
+  state.rng = makeRng(state.seed);
+  state.noiseSeed = state.rng.int(0, 1e9);
+  resize();
+  resetMelt();
+  updateStats();
+  requestAnimationFrame(frame);
+}
+
+boot().catch((err) => {
+  setStats("boot failed: " + err.message);
+  console.error(err);
+});
+
+</script>
+</body>
+</html>

@@ -279,6 +279,21 @@ const ctx = canvas.getContext("2d", { alpha: false });
 const statsEl = document.getElementById("stats");
 const hudEl = document.getElementById("hud");
 
+// Screensaver / kiosk: hide UI chrome
+const qs = new URLSearchParams(location.search);
+const isScreensaver =
+  globalThis.SELF_MELT_SCREENSAVER === true ||
+  qs.get("screensaver") === "1" ||
+  qs.get("hud") === "0";
+if (isScreensaver && hudEl) {
+  hudEl.classList.add("hidden");
+  hudEl.style.display = "none";
+}
+// statsEl may be missing in the single-file screensaver build
+const setStats = (text) => {
+  if (statsEl) statsEl.textContent = text;
+};
+
 const state = {
   lines: [], // tokenized source
   paletteIdx: 1,
@@ -311,6 +326,13 @@ const state = {
 };
 
 async function loadSource() {
+  // Screensaver / single-file build: source embedded on window
+  if (
+    typeof globalThis.SELF_MELT_SOURCE === "string" &&
+    globalThis.SELF_MELT_SOURCE.length > 0
+  ) {
+    return globalThis.SELF_MELT_SOURCE;
+  }
   // Prefer fetching this module (works under any local server)
   try {
     const url = new URL("./main.js", import.meta.url);
@@ -519,14 +541,16 @@ function draw() {
 
 function updateStats() {
   const pal = PALETTES[state.paletteIdx];
-  statsEl.textContent = [
-    `fps ${state.fps}`,
-    `grid ${state.cols}×${state.rows}`,
-    `lines ${state.lines.length}`,
-    `palette ${pal.name}`,
-    `melt every ${state.meltEvery}f`,
-    state.paused ? "PAUSED" : "running",
-  ].join(" · ");
+  setStats(
+    [
+      `fps ${state.fps}`,
+      `grid ${state.cols}×${state.rows}`,
+      `lines ${state.lines.length}`,
+      `palette ${pal.name}`,
+      `melt every ${state.meltEvery}f`,
+      state.paused ? "PAUSED" : "running",
+    ].join(" · "),
+  );
 }
 
 function frame(now) {
@@ -641,7 +665,11 @@ canvas.addEventListener("pointercancel", endDrag);
 
 // ── Boot ─────────────────────────────────────────────────────
 async function boot() {
-  statsEl.textContent = "loading source…";
+  setStats("loading source…");
+  // In screensaver mode, pick a random palette each launch
+  if (isScreensaver) {
+    state.paletteIdx = Math.floor(Math.random() * PALETTES.length);
+  }
   const src = await loadSource();
   state.lines = tokenizeSource(src);
   state.rng = makeRng(state.seed);
@@ -653,6 +681,6 @@ async function boot() {
 }
 
 boot().catch((err) => {
-  statsEl.textContent = "boot failed: " + err.message;
+  setStats("boot failed: " + err.message);
   console.error(err);
 });
