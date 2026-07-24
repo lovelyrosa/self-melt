@@ -1,86 +1,55 @@
 # Self-Melt
+Canvas2D 迷你代码融化特效，灵感源自 Andreas Gysin 的 Meltdown。
+程序读取自身源代码并做语法高亮，通过噪声矢量场实现字符网格流动崩坏融化效果。
 
-Canvas2D mini [Meltdown](https://meltd.ooo/wn): the program loads its own source, syntax-highlights it, and melts the character grid with a noise direction field.
+在线演示：https://lovelyrosa.github.io/self-melt/
 
-**Live demo:**  
-https://lovelyrosa.github.io/self-melt/
-
-## Run locally
-
+## 本地快速运行
+### 方式1：Python 静态服务
 ```bash
 cd self-melt
 python3 -m http.server 5174
-# open http://localhost:5174
+# 浏览器访问 http://localhost:5174
 ```
 
-Or: `npm start`
+### 方式2：NPM 启动
+```bash
+npm start
+```
 
-> Must be served over HTTP so `fetch('./main.js')` can load the source. Opening `index.html` via `file://` falls back to a short sample.
+> **注意**：必须通过 HTTP 服务打开。直接双击 `index.html` 使用 `file://` 协议会跨域失败，仅展示一段示例文本。
 
-## Controls
+## 操作快捷键
+| 按键 | 功能 |
+|-----|------|
+| 空格 | 暂停 / 恢复动画 |
+| R | 重置融化效果 |
+| 1–4 | 切换配色：单色 / 矩阵绿 / 蓝屏 / 火焰橙 |
+| `[` `]` | 减慢 / 加快融化流动 |
+| `-` `=` | 缩小 / 放大字符格子 |
+| `,` `.` | 调整整体动画速率 |
+| 方向键 / 鼠标拖拽 | 滚动源代码视图 |
+| H | 显示/隐藏控制面板 |
 
-| Key | Action |
-|-----|--------|
-| `Space` | Pause / resume |
-| `R` | Reset melt |
-| `1`–`4` | Palette: MONO / MATRIX / BSOD / EMBER |
-| `[` `]` | Slower / faster melt |
-| `-` `=` | Smaller / larger cells |
-| `,` `.` | Animation speed |
-| Arrows / drag | Scroll source |
-| `H` | Toggle HUD |
-
-## Deploy on GitHub Pages (free)
-
-1. Create a public repo named `self-melt` and push this folder.
-2. **Settings → Pages → Source:** Deploy from branch `main` / folder `/ (root)`.
-3. After ~1 minute, open:  
-   `https://<username>.github.io/self-melt/`
-
-No build step — pure static HTML/CSS/JS.
-
-## Free “domain” options
-
-| Option | URL shape | Notes |
-|--------|-----------|--------|
-| **GitHub Pages** (recommended) | `username.github.io/self-melt` | Free forever, HTTPS, zero config |
-| **User site** | `username.github.io` | Rename repo to `username.github.io` if you want the root URL |
-| **js.org** | `self-melt.js.org` | Free CNAME; [apply via js.org](https://github.com/js-org/js.org) if name is free |
-| **Cloudflare Pages** | `self-melt.pages.dev` | Free; connect the same GitHub repo |
-| **Vercel / Netlify** | `*.vercel.app` / `*.netlify.app` | Free; drag-and-drop or Git |
-| **Custom domain** | your name | Buy ~$10/yr (Namecheap / Cloudflare Registrar), point DNS to Pages |
-
-True second-level free domains (`.tk` etc.) are unreliable — prefer GitHub Pages or a cheap `.dev` / `.com`.
-
-### Optional custom domain on GitHub Pages
-
-1. Buy a domain (or use Cloudflare free subdomain services carefully).
-2. Repo **Settings → Pages → Custom domain** → enter e.g. `melt.example.com`.
-3. Add DNS records as GitHub shows (usually `CNAME` → `username.github.io`).
-4. Enable **Enforce HTTPS**.
-
-## How it maps to Meltdown
-
-| Piece | Role |
+## 核心实现逻辑（对标 Meltdown 原作思路）
+| 核心函数 | 功能说明 |
 |-------|------|
-| `loadSource()` | Self-fetch source (code = image) |
-| `tokenizeSource()` | Mini lexer |
-| `writeSourceIntoGrid()` | Paint tokens into cells |
-| `meltTick()` + `warpDir()` | Neighbor copy / melt field |
-| `draw()` | Canvas2D `fillText` |
+| `loadSource()` | 拉取项目自身源码，把代码当作渲染素材 |
+| `tokenizeSource()` | 简易词法分词，实现基础语法高亮 |
+| `writeSourceIntoGrid()` | 将带样式代码写入字符网格 |
+| `meltTick()` + `warpDir()` | 噪声矢量场算法，实现字符流动融化扭曲 |
+| `draw()` | Canvas2D fillText 逐帧绘制字符画面 |
 
-## macOS screensaver
+## macOS 屏幕保护程序
+内置离线单文件产物 `screensaver.html`，搭配 WebViewScreenSaver 可用。
+完整配置教程参考文档：[SCREENSAVER.md](./SCREENSAVER.md)
 
-Offline single-file build: [`screensaver.html`](./screensaver.html)
-
-Full setup (WebViewScreenSaver + online/offline URL): see **[SCREENSAVER.md](./SCREENSAVER.md)**
-
+打包构建命令：
 ```bash
 python3 scripts/build-screensaver.py
-# then point WebViewScreenSaver at screensaver.html or the GitHub Pages URL with ?screensaver=1
 ```
+构建后可加载本地 `screensaver.html`，或在线地址拼接 `?screensaver=1` 进入屏保模式。
 
 ## License
-
-MIT — do what you want; inspired by Andreas Gysin’s *Meltdown*, not a fork of on-chain code.
-
+MIT License，可自由使用、修改、分发。
+本项目仅视觉创意参考 Andreas Gysin 的 Meltdown，并非其源码分支复刻。
