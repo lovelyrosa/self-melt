@@ -2,8 +2,8 @@
 
 Canvas2D mini [Meltdown](https://meltd.ooo/wn): the program loads its own source, syntax-highlights it, and melts the character grid with a noise direction field.
 
-**Live demo (after GitHub Pages is on):**  
-`https://<your-username>.github.io/self-melt/`
+**Live demo:**  
+https://lovelyrosa.github.io/self-melt/
 
 ## Run locally
 
