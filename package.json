@@ -1,0 +1,10 @@
+{
+  "name": "self-melt",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Canvas2D mini Meltdown: source code as image, melting character grid",
+  "scripts": {
+    "start": "npx --yes serve . -l 5174",
+    "dev": "npx --yes serve . -l 5174"
+  }
+}

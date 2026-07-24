@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Self-Melt — Canvas2D mini Meltdown</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <aside id="hud" aria-label="controls">
+      <div class="title">Self-Melt</div>
+      <div class="sub">Canvas2D · 源码即画面</div>
+      <dl>
+        <div><dt>Space</dt><dd>暂停 / 继续</dd></div>
+        <div><dt>R</dt><dd>重置融化</dd></div>
+        <div><dt>1–4</dt><dd>切换调色板</dd></div>
+        <div><dt>[ ]</dt><dd>融化速度</dd></div>
+        <div><dt>- =</dt><dd>字体缩放</dd></div>
+        <div><dt>↑↓←→</dt><dd>滚动源码</dd></div>
+        <div><dt>H</dt><dd>显示 / 隐藏 HUD</dd></div>
+      </dl>
+      <p id="stats">loading…</p>
+    </aside>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
